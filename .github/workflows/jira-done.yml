@@ -2,12 +2,13 @@
 name: Move Jira SMS-5 to Done
 
 on:
+  workflow_dispatch:
   pull_request:
     types: [closed]
 
 jobs:
   update-jira:
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.title, 'SMS-5')
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && contains(github.event.pull_request.title, 'SMS-5'))
     runs-on: ubuntu-latest
 
     steps:
@@ -17,8 +18,24 @@ jobs:
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
         run: |
-          curl -sS -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+          BASE_URL="${JIRA_BASE_URL%/}"
+
+          TRANSITIONS=$(curl -sS -f -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+            "$BASE_URL/rest/api/3/issue/SMS-5/transitions")
+
+          echo "$TRANSITIONS" | jq '.transitions[] | {id, name}'
+
+          TRANSITION_ID=$(echo "$TRANSITIONS" | jq -r '.transitions[] | select(.name == "Done") | .id' | head -n 1)
+
+          if [ -z "$TRANSITION_ID" ]; then
+            echo "No transition named Done is available for SMS-5."
+            exit 1
+          fi
+
+          curl -sS -f -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
             -X POST \
             -H "Content-Type: application/json" \
-            -d '{"transition":{"id":"31"}}' \
-            "$JIRA_BASE_URL/rest/api/3/issue/SMS-5/transitions"
+            -d "{\"transition\":{\"id\":\"$TRANSITION_ID\"}}" \
+            "$BASE_URL/rest/api/3/issue/SMS-5/transitions"
+
+          echo "Jira issue SMS-5 was moved to Done."
