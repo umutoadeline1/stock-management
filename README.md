@@ -1,2 +1,2 @@
 # stock-management
-used for managing stock
+used for managing stock.
